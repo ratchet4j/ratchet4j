@@ -90,7 +90,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Releasing $tag (dry run: $dry, pre-release: $prerelease, previous tag: ${prev:-none})"
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 17
