@@ -1,104 +1,171 @@
-# ratchet4j (working name)
+<p align="center">
+  <img src="docs/assets/ratchet4j-logo.png" alt="ratchet4j logo" width="140">
+</p>
 
-**Fail the build only on NEW static-analysis violations.** Turn on Checkstyle, PMD or SpotBugs
-on a legacy codebase without fixing 4,000 old violations first.
+<h1 align="center">ratchet4j</h1>
 
-1. `baseline`: record every current violation (once).
-2. `check`: fail only on violations that are not in the baseline.
-3. `update`: when old violations get fixed, the baseline shrinks and can never grow back (the *ratchet*).
+<p align="center">
+  <b>Fail the build only on NEW static analysis violations.</b><br>
+  A baseline and ratchet for Java: Checkstyle, PMD, SpotBugs and SARIF.
+</p>
 
-Violations are matched by a **content fingerprint, not by line number**, so inserting lines,
+<p align="center">
+  <a href="https://github.com/ratchet4j/ratchet4j/actions/workflows/ci.yml"><img src="https://github.com/ratchet4j/ratchet4j/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License: Apache 2.0"></a>
+  <img src="https://img.shields.io/badge/Java-17%2B-orange.svg" alt="Java 17+">
+  <img src="https://img.shields.io/badge/status-early%20(0.x)-yellow.svg" alt="Status: early">
+</p>
+
+---
+
+## The problem
+
+You turn on Checkstyle, PMD or SpotBugs on a ten-year-old codebase and get **4,000 violations**.
+Your options are all bad: suppress everything in one giant file, fix it all in one huge pull
+request, or switch the rule off again.
+
+## The idea
+
+1. **Baseline**: record the violations you have today.
+2. **Check**: fail the build only on violations that are *not* in the baseline. Old debt blocks nobody.
+3. **Ratchet**: when old violations get fixed, the baseline shrinks, and it can **never grow back**.
+
+Violations are recognized by what the code says, **not by line number**. Inserting lines,
 reformatting, moving a method or renaming a file does not turn old debt into "new" violations.
+
+```text
+$ ratchet check --input target/checkstyle-result.xml
+src/main/java/demo/A.java:2:1: [checkstyle:UnusedImports] Unused import - java.io.File. (NEW)
+ratchet4j: 1 new, 0 strict, 2 baselined (tolerated), 0 fixed since baseline
+$ echo $?
+1
+```
+
+## Features
+
+- **Analyzer-agnostic**: one baseline for Checkstyle, PMD, SpotBugs and any tool that writes SARIF
+- **Refactoring-proof matching**: content fingerprints with four fallback tiers; each old violation is matched at most once, so duplicates are counted exactly
+- **Ratchet**: `update` only ever shrinks the baseline; growing it needs an explicit `--allow-increase`
+- **Strict rules**: make chosen rules fail on every occurrence, baselined or not (`--strict 'spotbugs:SQL*'`)
+- **Deterministic**: the baseline file is sorted, one entry per line, no timestamps, so Git diffs show only real changes
+- **No runtime dependencies**: one small jar, nothing to audit besides this repository
+
+## Install
+
+There is no release on Maven Central yet. Build from source (JDK 17+ and Maven 3.9+):
+
+```bash
+git clone https://github.com/ratchet4j/ratchet4j.git
+cd ratchet4j
+mvn verify
+# the runnable jar is now at ratchet-cli/target/ratchet.jar
+```
 
 ## Quickstart
 
 ```bash
-mvn verify                                  # build + run all tests
-# 1. produce reports with the analyzers you already use (default paths of the Maven plugins)
+# 1. produce reports with the analyzers you already use
+#    (default output locations of their Maven plugins)
 mvn checkstyle:checkstyle pmd:pmd compile spotbugs:spotbugs
 
-# 2. run ratchet4j (the shaded jar is target/ratchet.jar)
 R="java -jar ratchet-cli/target/ratchet.jar"
 INPUTS=target/checkstyle-result.xml,target/pmd.xml,target/spotbugsXml.xml
 
-$R baseline --input $INPUTS        # once: writes ratchet-baseline.json (commit it)
-$R check    --input $INPUTS        # in CI: exit 1 if there are NEW violations
-$R update   --input $INPUTS        # after fixing old ones: shrink the baseline
-$R report   --input $INPUTS        # per-rule progress table
+# 2. once: record today's violations, and commit the file
+$R baseline --input $INPUTS          # writes ratchet-baseline.json
+
+# 3. in CI, on every pull request: fail on new violations only
+$R check --input $INPUTS             # exit code 1 if something new appeared
+
+# 4. after fixing old violations: lock in the progress
+$R update --input $INPUTS            # baseline shrinks, never grows
+
+# 5. see where you are
+$R report --input $INPUTS
 ```
 
-Useful options: `--strict 'spotbugs:SQL*'` (fail on every occurrence of a rule, baselined or not),
-`--context 3`, `--root <dir>`, `--src <dir>`, `--allow-increase` (update), `--force` (baseline).
-Exit codes: `0` ok, `1` new violations, `2` usage error, `3` internal error.
+### In GitHub Actions
 
-## Architecture
-
-```
- Checkstyle XML ─┐
- PMD XML ────────┤
- SpotBugs XML ───┼─► ViolationReader ─► Violation (common model) ─┐
- any SARIF ──────┘      (ratchet-readers)                         │
-                                                                  ▼
- source files ──────────────────────────────────────────►  Fingerprinter
-                                                      (anchor + context + scope + occurrence)
-                                                                  │
-                     ratchet-baseline.json ──────────────►  ViolationMatcher (4 tiers, 1-to-1)
-                                                                  │
-                                  ┌───────────────────────────────┼──────────────────────┐
-                                  ▼                               ▼                      ▼
-                         NEW violations                  UNCHANGED (legacy)          FIXED
-                    `check` fails (Policy)                  tolerated        `update` removes (Ratchet)
+```yaml
+- run: mvn -B checkstyle:checkstyle pmd:pmd
+- run: java -jar ratchet.jar check --input target/checkstyle-result.xml,target/pmd.xml
 ```
 
-| Module | What it does |
+(`ratchet.jar` is the jar you built from source, or one from a release once releases exist. A
+ready-made GitHub Action and a Maven plugin are on the [roadmap](#roadmap).)
+
+## Commands
+
+| Command | What it does |
 |---|---|
-| `ratchet-core` | model, source normalizer, scope heuristic, fingerprinter, matcher, policy, baseline IO, ratchet, `Engine` facade. **No dependencies.** |
-| `ratchet-readers` | `ViolationReader` implementations + format auto-detection. **No dependencies** (JDK StAX, XXE-hardened, plus a small JSON parser from core). |
-| `ratchet-cli` | `baseline`, `check`, `update`, `report`. Builds one runnable jar. |
+| `baseline` | Record all current violations. Refuses to overwrite an existing baseline unless `--force`. |
+| `check` | Print new violations and exit `1` if there are any. |
+| `update` | Ratchet down: drop fixed violations. New violations are *not* added unless `--allow-increase`. |
+| `report` | Per-rule table: baseline count, current count, new. |
 
-### Fingerprints (the heart of the project)
-For a violation on line L:
-- **anchor**: text of line L, normalized (comments stripped, whitespace collapsed)
-- **context**: up to N code lines above and below (blank/comment lines skipped)
-- **scope**: enclosing `Class#method` (brace-depth heuristic, not a full parser)
-- **occurrence**: index among identical findings, so duplicates are counted exactly
+| Option | Meaning |
+|---|---|
+| `-i, --input <file>[,<file>...]` | Analyzer reports (Checkstyle/PMD/SpotBugs XML, SARIF); repeatable |
+| `-b, --baseline <file>` | Baseline file (default `ratchet-baseline.json`) |
+| `--root <dir>` | Repository root (default `.`) |
+| `--src <dir>` | Source dir relative to the root, used to resolve SpotBugs paths (repeatable; default `src/main/java`, `src/test/java`) |
+| `--context <n>` | Context lines above/below a violation used for matching (default `2`) |
+| `--strict <glob>` | Rules that fail on every occurrence, e.g. `'spotbugs:SQL*'` (repeatable) |
+| `--allow-increase` | `update`: also add new violations to the baseline |
+| `--force` | `baseline`: overwrite an existing baseline |
 
-Matching runs in tiers, each baseline entry used **at most once**:
+**Exit codes:** `0` ok, `1` new violations found (or `update` refused to grow the baseline),
+`2` usage error, `3` internal error.
 
-| Tier | Key | Survives |
-|---|---|---|
-| 1 | rule + file + anchor + context + occurrence | line shifts, reformatting, comments |
-| 2 | rule + file + anchor + occurrence | edits to neighbouring lines |
-| 3 | rule + file + scope + normalized message | edits to the violating line itself |
-| 4 | rule + anchor + context | file renamed / moved |
+## How matching works (short version)
 
-Findings without a line (class-level SpotBugs) use the normalized message plus a scope hint and
-never take part in tier 4.
+For each violation ratchet4j looks at the line it points to, a few code lines around it, and the
+enclosing `Class#method`, never at the line number. It then matches current violations to the
+baseline in four tiers, strongest first:
 
-### Design choices
-- **Zero runtime dependencies**: tiny jar, no supply-chain surface, trivial to embed in a Maven plugin later.
-- **Own baseline JSON** (sorted, one entry per line, no timestamps): byte-identical output, clean Git diffs.
-- **A false "new violation" is worse than a missed one**; matching therefore falls through four tiers.
-- **Baseline can only shrink**: `baseline` refuses to overwrite without `--force`; `update` refuses to add new violations without `--allow-increase`.
+| Tier | Survives |
+|---|---|
+| 1. exact | line shifts, reformatting, comment changes |
+| 2. same line, nearby code edited | edits to neighbouring lines |
+| 3. same rule, method and message | edits to the violating line itself |
+| 4. same line and context elsewhere | the file was renamed or moved |
 
-## Status and honesty
+Details, the baseline format and the design decisions are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-Tested (61 tests): the 20 refactoring scenarios (line shifts, reformatting, comments, moved methods,
-renamed files, duplicates, one-entry-cannot-match-twice, ...), determinism, ratchet invariants,
-JSON, readers, XXE, and an end-to-end CLI lifecycle. Mutation-checked: deliberately breaking the
-matcher (dropping a tier, letting an entry match twice, putting line numbers into fingerprints) makes tests fail.
+## Does it work on real code?
 
-**Not yet done / caveats**
-- Reader tests use **hand-written** reports that follow the real layouts. Next step (P1-T3): generate fixtures from real Checkstyle/PMD/SpotBugs runs and add them.
-- Not yet benchmarked on real open-source repos (false-NEW rate on real history is the key number to measure).
-- Scope detection is a heuristic; unusual code (e.g. text blocks) can confuse it. It only feeds tier 3.
-- The Maven poms were not executed by the author's environment (no Maven access); the code was compiled and tested with `javac` directly. Run `mvn verify` first and report anything that fails.
+A first benchmark on [google/gson](https://github.com/google/gson) (real Checkstyle 10.17.0
+output, baseline from a commit one year older, 52 changed files in between): **355 violations
+reported as new; 352 of them are on added or modified lines or in brand-new files**, whereas a
+baseline keyed on line numbers would have reported 2,228. This is one repository and an
+approximate check, and it also exposed weaknesses. Read the honest write-up in
+[docs/BENCHMARK.md](docs/BENCHMARK.md).
+
+## Status
+
+Early (0.x). The core engine, the four readers and the CLI work and are covered by tests, but:
+
+- reader tests use hand-written reports that follow the real layouts; fixtures captured from real tool runs are still to come
+- only Checkstyle has been run on a real repository so far
+- the CLI options and the baseline schema may change before 1.0
 
 ## Roadmap
-1. Real-tool fixtures + real-repo benchmark
-2. SARIF output with `baselineState` and `partialFingerprints` (GitHub code scanning)
-3. Maven plugin (`ratchet:baseline|check|update`)
-4. GitHub Action: PR comment listing only new violations
-5. Quality gates on this repo + dogfooding (Spotless, Checkstyle, PMD, SpotBugs, PIT)
-6. Auto-fix engine (OpenRewrite-based, verify loop, small single-rule PRs)
-7. Open-core extras: multi-repo dashboard, policy-as-code, SSO, audit reports
+
+- [ ] Real PMD and SpotBugs fixtures and a larger benchmark
+- [ ] A switch to make tier-3 matching stricter (see the benchmark notes)
+- [ ] SARIF output (`baselineState`, `partialFingerprints`) for GitHub code scanning
+- [ ] Maven plugin: `ratchet:baseline`, `ratchet:check`, `ratchet:update`
+- [ ] GitHub Action that comments only the new violations on a pull request
+- [ ] Automatic, verified fixes for the simplest rules (via OpenRewrite)
+- [ ] Release to Maven Central
+
+## Contributing
+
+Contributions, bug reports and real-world feedback are very welcome. The most valuable help right
+now: run it on your own code and tell us when an old violation shows up as new. See
+[CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md).
+Security issues: see [SECURITY.md](SECURITY.md).
+
+## License
+
+[Apache License 2.0](LICENSE)
