@@ -10,6 +10,41 @@
   <packaging>pom</packaging>
   <name>ratchet4j parent</name>
   <description>Analyzer-agnostic baseline and ratchet for Java static analysis</description>
+  <url>https://github.com/ratchet4j/ratchet4j</url>
+  <inceptionYear>2026</inceptionYear>
+
+  <organization>
+    <name>ratchet4j</name>
+    <url>https://github.com/ratchet4j</url>
+  </organization>
+
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <developers>
+    <developer>
+      <name>ratchet4j contributors</name>
+      <organization>ratchet4j</organization>
+      <organizationUrl>https://github.com/ratchet4j</organizationUrl>
+    </developer>
+  </developers>
+
+  <scm>
+    <connection>scm:git:https://github.com/ratchet4j/ratchet4j.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/ratchet4j/ratchet4j.git</developerConnection>
+    <url>https://github.com/ratchet4j/ratchet4j</url>
+    <tag>HEAD</tag>
+  </scm>
+
+  <issueManagement>
+    <system>GitHub</system>
+    <url>https://github.com/ratchet4j/ratchet4j/issues</url>
+  </issueManagement>
 
   <modules>
     <module>ratchet-core</module>
@@ -21,6 +56,8 @@
     <maven.compiler.release>17</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <junit.version>5.10.2</junit.version>
+    <!-- release profile: false = the deployment waits for a manual "Publish" click in the Central Portal -->
+    <central.autoPublish>false</central.autoPublish>
   </properties>
 
   <dependencyManagement>
@@ -71,4 +108,79 @@
       </plugins>
     </pluginManagement>
   </build>
+
+  <profiles>
+    <!--
+      Only used by the release workflow (mvn -Prelease deploy): adds source and Javadoc jars,
+      signs everything with GPG and uploads to Maven Central through the Central Portal.
+      Normal builds ("mvn verify") never activate it.
+    -->
+    <profile>
+      <id>release</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-source-plugin</artifactId>
+            <version>3.3.1</version>
+            <executions>
+              <execution>
+                <id>attach-sources</id>
+                <goals>
+                  <goal>jar-no-fork</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-javadoc-plugin</artifactId>
+            <version>3.12.0</version>
+            <configuration>
+              <doclint>none</doclint>
+              <quiet>true</quiet>
+            </configuration>
+            <executions>
+              <execution>
+                <id>attach-javadocs</id>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>3.2.8</version>
+            <configuration>
+              <gpgArguments>
+                <arg>--pinentry-mode</arg>
+                <arg>loopback</arg>
+              </gpgArguments>
+            </configuration>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>sign</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.sonatype.central</groupId>
+            <artifactId>central-publishing-maven-plugin</artifactId>
+            <version>0.10.0</version>
+            <extensions>true</extensions>
+            <configuration>
+              <publishingServerId>central</publishingServerId>
+              <autoPublish>${central.autoPublish}</autoPublish>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

@@ -1,0 +1,76 @@
+name: Scheduled release
+
+# Every second month (the 1st of January, March, May, July, September and November, 06:00 UTC)
+# this workflow starts a release, but only if
+#   - there is at least one earlier release (the first one is done by hand),
+#   - there are new commits since the last release, and
+#   - CI is green on the latest commit of main.
+# The actual release is done by release.yml, which can wait for a human approval if the
+# "release" environment has required reviewers.
+on:
+  schedule:
+    - cron: '0 6 1 1,3,5,7,9,11 *'
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Which part of the version to increase'
+        type: choice
+        options: [minor, patch, major]
+        default: minor
+      force:
+        description: 'Release even if there are no new commits'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  plan-and-start:
+    name: Decide and start the release
+    if: github.repository == 'ratchet4j/ratchet4j'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Decide
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUMP: ${{ inputs.bump || 'minor' }}
+          FORCE: ${{ inputs.force || 'false' }}
+        run: |
+          set -euo pipefail
+          last="$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2> /dev/null || true)"
+          if [ -z "$last" ]; then
+            echo "::notice::No release exists yet. Do the first release by hand (Actions > Release)."
+            echo "start=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          count="$(git rev-list --count "$last"..HEAD)"
+          if [ "$count" = 0 ] && [ "$FORCE" != true ]; then
+            echo "::notice::No commits since $last, nothing to release."
+            echo "start=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          sha="$(git rev-parse HEAD)"
+          status="$(gh run list --workflow ci.yml --branch main --commit "$sha" --limit 1 --json conclusion --jq '.[0].conclusion // "none"')"
+          if [ "$status" != success ]; then
+            echo "::error::CI is '$status' on $sha. Fix main first; a release needs a green CI."
+            exit 1
+          fi
+          version="$(bash .github/scripts/next-version.sh "$last" "$BUMP")"
+          echo "::notice::$count commits since $last; releasing $version"
+          {
+            echo "start=true"
+            echo "version=$version"
+          } >> "$GITHUB_OUTPUT"
+      - name: Start the release workflow
+        if: steps.plan.outputs.start == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: gh workflow run release.yml --ref main -f version="$VERSION" -f dry_run=false -f prerelease=false

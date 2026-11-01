@@ -52,7 +52,16 @@ $ echo $?
 
 ## Install
 
-There is no release on Maven Central yet. Build from source (JDK 17+ and Maven 3.9+):
+**Download** `ratchet-<version>.jar` from the latest
+[GitHub Release](https://github.com/ratchet4j/ratchet4j/releases), then verify and try it
+(needs Java 17+):
+
+```bash
+sha256sum -c ratchet-0.1.0.jar.sha256
+java -jar ratchet-0.1.0.jar --version
+```
+
+**Or build from source** (JDK 17+ and Maven 3.9+):
 
 ```bash
 git clone https://github.com/ratchet4j/ratchet4j.git
@@ -61,6 +70,9 @@ mvn verify
 # the runnable jar is now at ratchet-cli/target/ratchet.jar
 ```
 
+Releases are published every second month; see [docs/RELEASING.md](docs/RELEASING.md). A Maven
+Central release is planned.
+
 ## Quickstart
 
 ```bash
@@ -68,7 +80,7 @@ mvn verify
 #    (default output locations of their Maven plugins)
 mvn checkstyle:checkstyle pmd:pmd compile spotbugs:spotbugs
 
-R="java -jar ratchet-cli/target/ratchet.jar"
+R="java -jar ratchet-0.1.0.jar"      # or ratchet-cli/target/ratchet.jar when built from source
 INPUTS=target/checkstyle-result.xml,target/pmd.xml,target/spotbugsXml.xml
 
 # 2. once: record today's violations, and commit the file
@@ -91,8 +103,8 @@ $R report --input $INPUTS
 - run: java -jar ratchet.jar check --input target/checkstyle-result.xml,target/pmd.xml
 ```
 
-(`ratchet.jar` is the jar you built from source, or one from a release once releases exist. A
-ready-made GitHub Action and a Maven plugin are on the [roadmap](#roadmap).)
+(`ratchet.jar` is the jar from a release or one you built from source. A ready-made GitHub
+Action and a Maven plugin are on the [roadmap](#roadmap).)
 
 ## Commands
 

@@ -32,6 +32,36 @@ The runnable jar is built at `ratchet-cli/target/ratchet.jar`.
 
 Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first; it explains the fingerprint and matching design.
 
+## What CI checks
+
+Every pull request must pass the single check **CI OK**, which is green only if all of these pass:
+
+- build and tests on Java 17 and 21 (Linux) and on Windows and macOS
+- a smoke test of the packaged jar
+- the **self-check**: ratchet4j runs Checkstyle (Google style) on its own code and fails on **new**
+  violations. The ones that existed on day one are recorded in `ratchet-baseline.json`
+- Markdown link check and workflow lint (actionlint)
+
+### The self-check
+
+If you add a Google-style violation (for example a line longer than 100 characters), CI fails and
+prints the file and line. Fix it. When you *fix* old violations, shrink the baseline so the progress
+is locked in:
+
+```bash
+mvn -DskipTests package
+java -jar checkstyle.jar -c /google_checks.xml -f xml -o target/self-checkstyle.xml \
+  ratchet-core/src ratchet-readers/src ratchet-cli/src
+java -jar ratchet-cli/target/ratchet.jar update --root . --input target/self-checkstyle.xml
+```
+
+(`checkstyle.jar` is Checkstyle 10.17.0 "all" jar; see `.github/workflows/ci.yml` for the exact
+download.) Never grow the baseline to make CI pass.
+
+## Releases
+
+Releases happen every second month and are automated; see [docs/RELEASING.md](docs/RELEASING.md).
+
 ## Ground rules
 
 1. **No runtime dependencies** in `ratchet-core` and `ratchet-readers`. If you think one is needed,

@@ -144,6 +144,15 @@ class MainTest {
     assertTrue(junk.err.contains("Unrecognized report format"), junk.err);
   }
 
+  @Test
+  void versionFlagPrintsTheToolName() {
+    for (String flag : new String[] {"--version", "version"}) {
+      Result r = cli(flag);
+      assertEquals(0, r.code);
+      assertTrue(r.out.startsWith("ratchet4j "), r.out);
+    }
+  }
+
   private static String[] concat(String command, String[] rest, String... more) {
     String[] all = new String[1 + rest.length + more.length];
     all[0] = command;

@@ -46,6 +46,7 @@ public final class Main {
         check      Fail (exit 1) if there are violations that are not in the baseline
         update     Ratchet down: drop fixed violations from the baseline (never grows it)
         report     Show per-rule progress against the baseline
+        version    Print the version (also: --version)
 
       Options:
         -i, --input <file>[,<file>...]  analyzer reports (Checkstyle/PMD/SpotBugs XML, SARIF); repeatable
@@ -73,6 +74,10 @@ public final class Main {
       return args.length == 0 ? USAGE : OK;
     }
     String command = args[0];
+    if (command.equals("--version") || command.equals("version")) {
+      out.println("ratchet4j " + version());
+      return OK;
+    }
     Options opts;
     try {
       opts = Options.parse(List.of(args).subList(1, args.length));
@@ -100,6 +105,12 @@ public final class Main {
       err.println("internal error: " + e.getMessage());
       return INTERNAL;
     }
+  }
+
+  /** The build version from the jar manifest, or {@code dev} when run from classes. */
+  static String version() {
+    String v = Main.class.getPackage().getImplementationVersion();
+    return v == null ? "dev" : v;
   }
 
   /** A problem the user can fix by changing the command line or files. */

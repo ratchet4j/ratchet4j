@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  build:
+    name: Build and test (Java ${{ matrix.java }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        java: [17, 21]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+      - name: Build and test
+        run: mvn -B -ntp verify
+      - name: Smoke test the packaged jar
+        run: bash .github/scripts/smoke-test.sh ratchet-cli/target/ratchet.jar
+      - name: Upload the command line jar
+        if: matrix.java == 17
+        uses: actions/upload-artifact@v4
+        with:
+          name: ratchet-cli
+          path: ratchet-cli/target/ratchet.jar
+
+  cross-platform:
+    name: Build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: maven
+      - name: Build and test
+        run: mvn -B -ntp verify
+      - name: Smoke test the packaged jar
+        shell: bash
+        run: bash .github/scripts/smoke-test.sh ratchet-cli/target/ratchet.jar
+
+  # ratchet4j guards its own code: new Checkstyle (Google style) violations fail the build.
+  self-check:
+    name: Self-check (ratchet4j on ratchet4j)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: maven
+      - name: Build the jar
+        run: mvn -B -ntp -q -DskipTests package
+      - name: Download Checkstyle (checksum pinned)
+        run: |
+          curl -fsSL -o checkstyle.jar https://github.com/checkstyle/checkstyle/releases/download/checkstyle-10.17.0/checkstyle-10.17.0-all.jar
+          echo "51c34d738520c1389d71998a9ab0e6dabe0d7cf262149f3e01a7294496062e42  checkstyle.jar" | sha256sum -c -
+      - name: Run Checkstyle on this repository
+        run: |
+          mkdir -p target
+          java -jar checkstyle.jar -c /google_checks.xml -f xml -o target/self-checkstyle.xml ratchet-core/src ratchet-readers/src ratchet-cli/src || true
+      - name: Fail on new violations
+        run: java -jar ratchet-cli/target/ratchet.jar check --root . --input target/self-checkstyle.xml --baseline ratchet-baseline.json
+
+  repo-hygiene:
+    name: Links and workflow lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Markdown links
+        run: python3 .github/scripts/check-links.py
+      - name: Lint GitHub workflows
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
+          ./actionlint -color
+
+  # One check to require in branch protection: green only if every job above succeeded.
+  ci-ok:
+    name: CI OK
+    if: always()
+    needs: [build, cross-platform, self-check, repo-hygiene]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Did every job succeed?
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Job results: $RESULTS"
+          for r in $RESULTS; do
+            [ "$r" = success ] || { echo "::error::At least one required job did not succeed"; exit 1; }
+          done

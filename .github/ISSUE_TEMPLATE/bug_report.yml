@@ -1,0 +1,40 @@
+name: Bug report
+description: Something is wrong, for example an old violation reported as NEW, or a crash
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you run, what did you expect, and what did you get?
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command and output
+      description: The exact `ratchet` command and its output.
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: analyzers
+    attributes:
+      label: Analyzer(s) and version(s)
+      placeholder: "Checkstyle 10.17.0, PMD 7.4.0"
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: ratchet4j version, Java version, OS
+      placeholder: "0.1.0, Java 17, Ubuntu 24.04"
+    validations:
+      required: true
+  - type: textarea
+    id: sample
+    attributes:
+      label: Minimal example
+      description: >
+        If a violation was wrongly reported as new (or missed), please include the smallest
+        report excerpt and source snippet that shows it. Remove anything confidential.
