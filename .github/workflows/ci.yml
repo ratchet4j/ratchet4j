@@ -34,7 +34,7 @@ jobs:
         run: bash .github/scripts/smoke-test.sh ratchet-cli/target/ratchet.jar
       - name: Upload the command line jar
         if: matrix.java == 17
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ratchet-cli
           path: ratchet-cli/target/ratchet.jar
